@@ -11,80 +11,47 @@ let bot;
 
 function createBot() {
   bot = mineflayer.createBot({
-    host: 'IIITD_29.aternos.me', // 🔁 Replace with your server IP
-    port: 24285,             // Change if different
+    host: 'IIITD_29.aternos.me',
+    port: 24285,
     username: 'AFK_Bot',
+    version: '1.20.1' // Set this if your server uses a specific version
   });
 
-  // Load pathfinder plugin
   bot.loadPlugin(pathfinder);
 
   bot.on('spawn', () => {
-    console.log('Bot has spawned.');
     const defaultMove = new Movements(bot);
-
-    // ==== Idle Movement ====
-    setInterval(() => {
-      const actions = ['forward', 'back', 'left', 'right'];
-      const action = actions[Math.floor(Math.random() * actions.length)];
-      bot.setControlState(action, true);
-      bot.setControlState('sneak', Math.random() < 0.5);
-
-      bot.look(bot.entity.yaw + (Math.random() - 0.5) * 1.5, bot.entity.pitch, true);
-
-      setTimeout(() => {
-        bot.setControlState(action, false);
-        bot.setControlState('sneak', false);
-      }, 1000 + Math.random() * 1000);
-    }, 10000);
-
-    // Camera jitter
-    setInterval(() => {
-      bot.look(
-        bot.entity.yaw + (Math.random() - 0.5) * 0.2,
-        bot.entity.pitch + (Math.random() - 0.5) * 0.2,
-        true
-      );
-    }, 700);
+    bot.pathfinder.setMovements(defaultMove);
+    startIdleMovement(bot);
+    monitorWallCollision(bot);
   });
 
-  // ==== Commands ====
+  // ==== Chat Commands ====
   let goalListenerActive = false;
 
   bot.on('chat', async (username, message) => {
     if (username === bot.username) return;
 
     if (message.toLowerCase() === '!sleep') {
-      if (goalListenerActive) {
-        bot.chat("Already heading to bed or sleeping.");
-        return;
-      }
+      if (goalListenerActive) return;
 
       const bed = bot.findBlock({
         matching: block => bot.isABed(block),
         maxDistance: 6,
       });
 
-      if (!bed) {
-        bot.chat("I can't find a bed nearby.");
-        return;
-      }
+      if (!bed) return;
 
       const bedPos = bed.position;
       bot.pathfinder.setMovements(new Movements(bot));
-      bot.chat("Heading to bed...");
 
       const sleepAfterArriving = async () => {
         bot.removeListener('goal_reached', sleepAfterArriving);
         goalListenerActive = false;
-
         setTimeout(async () => {
           try {
             await bot.sleep(bed);
-            bot.chat("I'm now sleeping 😴");
-          } catch (err) {
-            bot.chat("Couldn't sleep: " + err.message);
-          }
+          } catch (err) {}
         }, 500);
       };
 
@@ -96,14 +63,11 @@ function createBot() {
     if (message.toLowerCase() === '!wake') {
       try {
         await bot.wake();
-        bot.chat("I'm awake now 🌞");
-      } catch (err) {
-        bot.chat("I'm not asleep or can't wake up.");
-      }
+      } catch (err) {}
     }
   });
 
-  // Auto-reconnect
+  // ==== Auto-Reconnect ====
   bot.on('end', () => {
     console.log("Bot disconnected. Reconnecting in 10s...");
     setTimeout(createBot, 10000);
@@ -112,6 +76,57 @@ function createBot() {
   bot.on('error', err => {
     console.log("Bot error:", err);
   });
+}
+
+// ==== Idle Movement Function ====
+function startIdleMovement(bot) {
+  setInterval(() => {
+    const actions = ['forward', 'back', 'left', 'right'];
+    const action = actions[Math.floor(Math.random() * actions.length)];
+    bot.setControlState(action, true);
+    bot.setControlState('sneak', Math.random() < 0.5);
+
+    bot.look(bot.entity.yaw + (Math.random() - 0.5) * 1.5, bot.entity.pitch, true);
+
+    setTimeout(() => {
+      bot.setControlState(action, false);
+      bot.setControlState('sneak', false);
+    }, 1000 + Math.random() * 1000);
+  }, 10000);
+
+  // Camera jitter
+  setInterval(() => {
+    bot.look(
+      bot.entity.yaw + (Math.random() - 0.5) * 0.2,
+      bot.entity.pitch + (Math.random() - 0.5) * 0.2,
+      true
+    );
+  }, 700);
+}
+
+// ==== Wall Collision Logic ====
+function monitorWallCollision(bot) {
+  let lastPos = null;
+  let stuckStartTime = null;
+
+  setInterval(() => {
+    const currentPos = bot.entity.position.clone();
+
+    if (lastPos && currentPos.distanceTo(lastPos) < 0.02) {
+      if (!stuckStartTime) stuckStartTime = Date.now();
+
+      const stuckDuration = Date.now() - stuckStartTime;
+      if (stuckDuration >= 5000) {
+        const yaw = (bot.entity.yaw + Math.PI) % (2 * Math.PI);
+        bot.look(yaw, bot.entity.pitch, true);
+        stuckStartTime = null;
+      }
+    } else {
+      stuckStartTime = null;
+    }
+
+    lastPos = currentPos;
+  }, 1000);
 }
 
 createBot();
