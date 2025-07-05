@@ -14,7 +14,7 @@ function createBot() {
     host: 'IIITD_29.aternos.me',
     port: 24285,
     username: 'AFK_Bot',
-    version: '1.20.1' // Set this if your server uses a specific version
+    version: '1.20.1'
   });
 
   bot.loadPlugin(pathfinder);
@@ -26,7 +26,6 @@ function createBot() {
     monitorWallCollision(bot);
   });
 
-  // ==== Chat Commands ====
   let goalListenerActive = false;
 
   bot.on('chat', async (username, message) => {
@@ -51,7 +50,9 @@ function createBot() {
         setTimeout(async () => {
           try {
             await bot.sleep(bed);
-          } catch (err) {}
+          } catch (err) {
+            console.log("Sleep error:", err.message);
+          }
         }, 500);
       };
 
@@ -63,30 +64,44 @@ function createBot() {
     if (message.toLowerCase() === '!wake') {
       try {
         await bot.wake();
-      } catch (err) {}
+      } catch (err) {
+        console.log("Wake error:", err.message);
+      }
     }
   });
 
-  // ==== Auto-Reconnect ====
+  // Reconnect on disconnect
   bot.on('end', () => {
     console.log("Bot disconnected. Reconnecting in 10s...");
     setTimeout(createBot, 10000);
   });
 
   bot.on('error', err => {
-    console.log("Bot error:", err);
+    if (err.code === 'ECONNABORTED') {
+      console.log("Connection aborted. Possibly due to server shutdown.");
+    } else {
+      console.log("Bot error:", err);
+    }
   });
 }
 
-// ==== Idle Movement Function ====
+// === Idle Movement ===
 function startIdleMovement(bot) {
   setInterval(() => {
+    if (!bot || !bot.entity || !bot.player || bot.isSleeping) return;
+
     const actions = ['forward', 'back', 'left', 'right'];
     const action = actions[Math.floor(Math.random() * actions.length)];
     bot.setControlState(action, true);
     bot.setControlState('sneak', Math.random() < 0.5);
 
-    bot.look(bot.entity.yaw + (Math.random() - 0.5) * 1.5, bot.entity.pitch, true);
+    try {
+      bot.look(
+        bot.entity.yaw + (Math.random() - 0.5) * 1.5,
+        bot.entity.pitch,
+        true
+      );
+    } catch (e) {}
 
     setTimeout(() => {
       bot.setControlState(action, false);
@@ -94,22 +109,26 @@ function startIdleMovement(bot) {
     }, 1000 + Math.random() * 1000);
   }, 10000);
 
-  // Camera jitter
   setInterval(() => {
-    bot.look(
-      bot.entity.yaw + (Math.random() - 0.5) * 0.2,
-      bot.entity.pitch + (Math.random() - 0.5) * 0.2,
-      true
-    );
+    if (!bot || !bot.entity) return;
+    try {
+      bot.look(
+        bot.entity.yaw + (Math.random() - 0.5) * 0.2,
+        bot.entity.pitch + (Math.random() - 0.5) * 0.2,
+        true
+      );
+    } catch (e) {}
   }, 700);
 }
 
-// ==== Wall Collision Logic ====
+// === Wall Collision Monitor ===
 function monitorWallCollision(bot) {
   let lastPos = null;
   let stuckStartTime = null;
 
   setInterval(() => {
+    if (!bot || !bot.entity) return;
+
     const currentPos = bot.entity.position.clone();
 
     if (lastPos && currentPos.distanceTo(lastPos) < 0.02) {
@@ -117,8 +136,10 @@ function monitorWallCollision(bot) {
 
       const stuckDuration = Date.now() - stuckStartTime;
       if (stuckDuration >= 5000) {
-        const yaw = (bot.entity.yaw + Math.PI) % (2 * Math.PI);
-        bot.look(yaw, bot.entity.pitch, true);
+        try {
+          const yaw = (bot.entity.yaw + Math.PI) % (2 * Math.PI);
+          bot.look(yaw, bot.entity.pitch, true);
+        } catch (e) {}
         stuckStartTime = null;
       }
     } else {
